@@ -1,0 +1,143 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+  --color-primary: #10b981;
+  --color-primary-dark: #047857;
+  --color-primary-light: #a7f3d0;
+  --color-success: #16a34a;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+  --color-info: #0ea5e9;
+  --color-ink: #0f172a;
+  --color-ink-muted: #64748b;
+  --color-surface: #ffffff;
+  --color-surface-2: #f8fafc;
+  --color-surface-3: #e2e8f0;
+  --color-border: #e2e8f0;
+  --color-app: #f8fafc;
+  --color-app-accent: #ecfdf5;
+}
+
+.dark {
+  color-scheme: dark;
+  --color-primary: #34d399;
+  --color-primary-dark: #10b981;
+  --color-primary-light: #065f46;
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-info: #67e8f9;
+  --color-ink: #f8fafc;
+  --color-ink-muted: #94a3b8;
+  --color-surface: #0f172a;
+  --color-surface-2: #111827;
+  --color-surface-3: #1f2937;
+  --color-border: #243042;
+  --color-app: #020617;
+  --color-app-accent: #0b1f1d;
+}
+
+@theme inline {
+  --color-primary: var(--color-primary);
+  --color-primary-dark: var(--color-primary-dark);
+  --color-primary-light: var(--color-primary-light);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+  --color-info: var(--color-info);
+  --color-ink: var(--color-ink);
+  --color-ink-muted: var(--color-ink-muted);
+  --color-surface: var(--color-surface);
+  --color-surface-2: var(--color-surface-2);
+  --color-surface-3: var(--color-surface-3);
+  --color-border: var(--color-border);
+  --color-app: var(--color-app);
+  --color-app-accent: var(--color-app-accent);
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+}
+
+body {
+  min-height: 100vh;
+  background: radial-gradient(circle at top, var(--color-app-accent), var(--color-app) 60%);
+  color: var(--color-ink);
+  font-family: var(--font-sans), sans-serif;
+  overflow-x: clip;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display), sans-serif;
+}
+
+.bg-app {
+  background: radial-gradient(circle at top, var(--color-app-accent), var(--color-app) 60%);
+}
+
+.text-ink {
+  color: var(--color-ink);
+}
+
+.text-ink-muted {
+  color: var(--color-ink-muted);
+}
+
+.bg-surface {
+  background-color: var(--color-surface);
+}
+
+.bg-surface-2 {
+  background-color: var(--color-surface-2);
+}
+
+.bg-surface-3 {
+  background-color: var(--color-surface-3);
+}
+
+.border-border {
+  border-color: var(--color-border);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-primary-light) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-primary-light);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+.cart-scroll-area {
+  padding-bottom: var(--cart-footer-height, 0px);
+  height: calc(100% - var(--cart-footer-height, 0px));
+  max-height: calc(100% - var(--cart-footer-height, 0px));
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 768px) {
+  .cart-scroll-area {
+    padding-bottom: 1rem;
+    height: auto;
+    max-height: none;
+  }
+}

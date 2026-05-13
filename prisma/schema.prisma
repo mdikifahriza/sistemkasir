@@ -1,0 +1,330 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Store {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storeCode               String    @unique @map("store_code")
+  name                    String
+  address                 String?
+  phone                   String?
+  email                   String?
+  taxPercentage           Decimal?  @default(0) @map("tax_percentage") @db.Decimal
+  serviceChargePercentage Decimal?  @default(0) @map("service_charge_percentage") @db.Decimal
+  currency                String?   @default("IDR")
+  timezone                String?   @default("Asia/Jakarta")
+  logoUrl                 String?   @map("logo_url")
+  isActive                Boolean?  @default(true) @map("is_active")
+  printerType             String?   @default("thermal") @map("printer_type")
+  printerWidth            Int?      @default(80) @map("printer_width")
+  createdAt               DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt               DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  orderingAppUrl          String?   @map("ordering_app_url")
+
+  @@map("stores")
+}
+
+model User {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username            String          @unique
+  password            String
+  fullName            String          @map("full_name")
+  email               String?         @unique
+  phone               String?
+  role                String
+  pinCode             String?         @map("pin_code")
+  avatarUrl           String?         @map("avatar_url")
+  isActive            Boolean?        @default(true) @map("is_active")
+  lastLogin           DateTime?       @map("last_login") @db.Timestamp(6)
+  createdAt           DateTime?       @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt           DateTime?       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  activityLogs        ActivityLog[]
+  attendances         ShiftEmployee[]
+  shiftSessions       ShiftSession[]  @relation("ShiftOpener")
+  transactions        Transaction[]   @relation("TransactionCreatedBy")
+  deletedTransactions Transaction[]   @relation("TransactionDeletedBy")
+
+  @@map("users")
+}
+
+model Category {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  isActive    Boolean?   @default(true) @map("is_active")
+  createdAt   DateTime?  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime?  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  description String?
+  icon        String?
+  parentId    String?    @map("parent_id") @db.Uuid
+  sortOrder   Int?       @default(0) @map("sort_order")
+  parent      Category?  @relation("SubCategories", fields: [parentId], references: [id])
+  children    Category[] @relation("SubCategories")
+  products    Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  categoryId         String?             @map("category_id") @db.Uuid
+  name               String
+  description        String?
+  sellingPrice       Decimal             @map("selling_price") @db.Decimal
+  status             String              @default("available")
+  imageUrl           String?             @map("image_url")
+  createdBy          String?             @map("created_by") @db.Uuid
+  createdAt          DateTime?           @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt          DateTime?           @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  unit               String?             @default("pcs")
+  orderItems         OrderItem[]
+  category           Category?           @relation(fields: [categoryId], references: [id])
+  transactionDetails TransactionDetail[]
+
+  @@map("products")
+}
+
+model Table {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  status    String    @default("available")
+  qrCodeUrl String?   @map("qr_code_url")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  orders    Order[]
+
+  @@map("tables")
+}
+
+model Order {
+  id               String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderNumber      String       @unique @map("order_number")
+  orderType        String       @default("dine_in") @map("order_type")
+  queueNumber      String?      @map("queue_number")
+  orderSource      String?      @map("order_source")
+  customerName     String?      @map("customer_name")
+  tableId          String?      @map("table_id") @db.Uuid
+  transactionId    String?      @map("transaction_id") @db.Uuid
+  gatewayPaymentId String?      @map("gateway_payment_id")
+  status           String       @default("pending_payment")
+  subtotal         Decimal      @default(0) @db.Decimal
+  taxAmount        Decimal      @default(0) @map("tax_amount") @db.Decimal
+  serviceCharge    Decimal      @default(0) @map("service_charge") @db.Decimal
+  discountAmount   Decimal      @default(0) @map("discount_amount") @db.Decimal
+  totalAmount      Decimal      @default(0) @map("total_amount") @db.Decimal
+  paidAt           DateTime?    @map("paid_at") @db.Timestamp(6)
+  notes            String?
+  createdAt        DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt        DateTime?    @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  items            OrderItem[]
+  table            Table?       @relation(fields: [tableId], references: [id])
+  transaction      Transaction? @relation(fields: [transactionId], references: [id])
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  orderId     String    @map("order_id") @db.Uuid
+  productId   String?   @map("product_id") @db.Uuid
+  productName String    @map("product_name")
+  quantity    Decimal   @db.Decimal
+  unitPrice   Decimal   @map("unit_price") @db.Decimal
+  subtotal    Decimal   @db.Decimal
+  notes       String?
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product     Product?  @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+model Transaction {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shiftSessionId   String?             @map("shift_session_id") @db.Uuid
+  invoiceNumber    String              @unique @map("invoice_number")
+  customerName     String?             @map("customer_name")
+  transactionDate  DateTime            @default(now()) @map("transaction_date") @db.Timestamp(6)
+  subtotal         Decimal             @default(0) @db.Decimal
+  discountAmount   Decimal?            @default(0) @map("discount_amount") @db.Decimal
+  serviceCharge    Decimal?            @default(0) @map("service_charge") @db.Decimal
+  taxAmount        Decimal?            @default(0) @map("tax_amount") @db.Decimal
+  totalAmount      Decimal             @default(0) @map("total_amount") @db.Decimal
+  paymentMethod    String              @map("payment_method")
+  amountPaid       Decimal             @default(0) @map("amount_paid") @db.Decimal
+  changeAmount     Decimal?            @default(0) @map("change_amount") @db.Decimal
+  notes            String?
+  status           String?             @default("completed")
+  voidReason       String?             @map("void_reason")
+  refundReason     String?             @map("refund_reason")
+  paidAt           DateTime?           @map("paid_at") @db.Timestamp(6)
+  gatewayPaymentId String?             @map("gateway_payment_id")
+  createdBy        String?             @map("created_by") @db.Uuid
+  deletedAt        DateTime?           @map("deleted_at") @db.Timestamp(6)
+  deletedBy        String?             @map("deleted_by") @db.Uuid
+  createdAt        DateTime?           @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt        DateTime?           @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  orders           Order[]
+  details          TransactionDetail[]
+  creator          User?               @relation("TransactionCreatedBy", fields: [createdBy], references: [id])
+  deleter          User?               @relation("TransactionDeletedBy", fields: [deletedBy], references: [id])
+  shiftSession     ShiftSession?       @relation(fields: [shiftSessionId], references: [id])
+
+  @@map("transactions")
+}
+
+model TransactionDetail {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transactionId String?      @map("transaction_id") @db.Uuid
+  productId     String?      @map("product_id") @db.Uuid
+  productName   String       @map("product_name")
+  quantity      Decimal      @db.Decimal
+  unitPrice     Decimal      @map("unit_price") @db.Decimal
+  subtotal      Decimal      @db.Decimal
+  notes         String?
+  createdAt     DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
+  product       Product?     @relation(fields: [productId], references: [id])
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+
+  @@map("transaction_details")
+}
+
+model Shift {
+  id        String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shiftName String         @map("shift_name")
+  startTime DateTime       @map("start_time") @db.Time(6)
+  endTime   DateTime       @map("end_time") @db.Time(6)
+  colorCode String?        @default("#3B82F6") @map("color_code")
+  isActive  Boolean?       @default(true) @map("is_active")
+  createdAt DateTime?      @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt DateTime?      @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  sessions  ShiftSession[]
+
+  @@map("shifts")
+}
+
+model ShiftSession {
+  id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shiftId                String?             @map("shift_id") @db.Uuid
+  userId                 String?             @map("user_id") @db.Uuid
+  sessionDate            DateTime            @map("session_date") @db.Date
+  xenditBalanceOpen      Decimal?            @default(0) @map("xendit_balance_open") @db.Decimal
+  xenditBalanceClose     Decimal?            @map("xendit_balance_close") @db.Decimal
+  xenditTransactionCount Int?                @default(0) @map("xendit_transaction_count")
+  xenditTotalIn          Decimal?            @default(0) @map("xendit_total_in") @db.Decimal
+  xenditDiscrepancy      Decimal?            @map("xendit_discrepancy") @db.Decimal
+  cashDrawerOpen         Decimal             @default(0) @map("cash_drawer_open") @db.Decimal
+  cashDrawerExpected     Decimal?            @map("cash_drawer_expected") @db.Decimal
+  cashDrawerClose        Decimal?            @map("cash_drawer_close") @db.Decimal
+  cashDiscrepancy        Decimal?            @map("cash_discrepancy") @db.Decimal
+  totalCashSales         Decimal?            @default(0) @map("total_cash_sales") @db.Decimal
+  totalDigitalSales      Decimal?            @default(0) @map("total_digital_sales") @db.Decimal
+  totalCashlessOther     Decimal?            @default(0) @map("total_cashless_other") @db.Decimal
+  totalExpenses          Decimal?            @default(0) @map("total_expenses") @db.Decimal
+  totalTransactions      Int?                @default(0) @map("total_transactions")
+  openedAt               DateTime?           @map("opened_at") @db.Timestamp(6)
+  closedAt               DateTime?           @map("closed_at") @db.Timestamp(6)
+  notes                  String?
+  status                 String?             @default("open")
+  createdAt              DateTime?           @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt              DateTime?           @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  expenses               Expense[]
+  transfers              ShiftCashTransfer[]
+  attendances            ShiftEmployee[]
+  shift                  Shift?              @relation(fields: [shiftId], references: [id])
+  user                   User?               @relation("ShiftOpener", fields: [userId], references: [id])
+  transactions           Transaction[]
+
+  @@map("shift_sessions")
+}
+
+model ShiftEmployee {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shiftSessionId String       @map("shift_session_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  checkIn        DateTime?    @map("check_in") @db.Timestamp(6)
+  checkOut       DateTime?    @map("check_out") @db.Timestamp(6)
+  isPresent      Boolean      @default(true) @map("is_present")
+  notes          String?
+  createdAt      DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
+  shiftSession   ShiftSession @relation(fields: [shiftSessionId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@map("shift_employees")
+}
+
+model ShiftCashTransfer {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shiftSessionId      String       @map("shift_session_id") @db.Uuid
+  type                String
+  amount              Decimal      @db.Decimal
+  xenditPayoutId      String?      @map("xendit_payout_id")
+  reason              String?
+  approvedBy          String       @map("approved_by") @db.Uuid
+  createdAt           DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
+  accountHolderName   String?      @map("account_holder_name")
+  accountNumberMasked String?      @map("account_number_masked")
+  channelCode         String?      @map("channel_code")
+  completedAt         DateTime?    @map("completed_at") @db.Timestamp(6)
+  failureCode         String?      @map("failure_code")
+  failureMessage      String?      @map("failure_message")
+  gatewayPayoutId     String?      @map("gateway_payout_id")
+  referenceId         String?      @unique @map("reference_id")
+  requestedAt         DateTime?    @map("requested_at") @db.Timestamp(6)
+  status              String?      @default("completed")
+  shiftSession        ShiftSession @relation(fields: [shiftSessionId], references: [id])
+
+  @@map("shift_cash_transfers")
+}
+
+model ExpenseCategory {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  icon      String?
+  isForHpp  Boolean   @default(false) @map("is_for_hpp")
+  isActive  Boolean?  @default(true) @map("is_active")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  expenses  Expense[]
+
+  @@map("expense_categories")
+}
+
+model Expense {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shiftSessionId    String?          @map("shift_session_id") @db.Uuid
+  expenseCategoryId String?          @map("expense_category_id") @db.Uuid
+  amount            Decimal          @db.Decimal
+  description       String?
+  vendorName        String?          @map("vendor_name")
+  receiptImageUrl   String?          @map("receipt_image_url")
+  expenseDate       DateTime         @map("expense_date") @db.Date
+  recordedBy        String?          @map("recorded_by") @db.Uuid
+  status            String?          @default("recorded")
+  createdAt         DateTime?        @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt         DateTime?        @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  isForHpp          Boolean          @default(false) @map("is_for_hpp")
+  category          ExpenseCategory? @relation(fields: [expenseCategoryId], references: [id])
+  shiftSession      ShiftSession?    @relation(fields: [shiftSessionId], references: [id])
+
+  @@map("expenses")
+}
+
+model ActivityLog {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String?   @map("user_id") @db.Uuid
+  action      String
+  tableName   String?   @map("table_name")
+  recordId    String?   @map("record_id") @db.Uuid
+  oldValue    Json?     @map("old_value")
+  newValue    Json?     @map("new_value")
+  description String?
+  ipAddress   String?   @map("ip_address")
+  userAgent   String?   @map("user_agent")
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  user        User?     @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
+}
