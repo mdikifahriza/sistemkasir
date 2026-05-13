@@ -6,7 +6,8 @@
     "dev": "next dev --turbo",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@ant-design/icons": "^6.2.2",
