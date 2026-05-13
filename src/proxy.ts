@@ -12,6 +12,7 @@ export function proxy(req: NextRequest) {
     '/api/auth/login',
     '/api/public/',
     '/api/internal/gateway/',
+    '/api/internal/orders/payment-session',
     '/api/health',
   ];
   if (publicPaths.some((path) => req.nextUrl.pathname.startsWith(path))) {
