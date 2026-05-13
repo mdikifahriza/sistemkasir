@@ -19,7 +19,6 @@ import {
   Tag,
   TimePicker,
   Typography,
-  message,
   App,
 } from 'antd';
 import {
@@ -50,6 +49,26 @@ function toPickerValue(value: string | Date | null | undefined) {
   if (!value) return null;
   const parsed = dayjs(value);
   return parsed.isValid() ? parsed : null;
+}
+
+function getDiscrepancyTone(value: number) {
+  return value < 0 ? 'text-red-500' : 'text-emerald-500';
+}
+
+function getDiscrepancyTagColor(value: number): 'error' | 'success' {
+  return value < 0 ? 'error' : 'success';
+}
+
+function getDiscrepancyLabel(value: number) {
+  if (value < 0) {
+    return 'Kurang';
+  }
+
+  if (value > 0) {
+    return 'Lebih';
+  }
+
+  return 'Sesuai';
 }
 
 async function readGatewayBalance(storeId: string) {
@@ -104,49 +123,9 @@ export default function ShiftsPage() {
     }
   }, [selectedShift, shifts]);
 
-  useEffect(() => {
-    if (currentSession) {
-      return;
-    }
-
+  const syncGatewayBalance = async (mode: 'opening' | 'closing', showToast = false) => {
     if (!store.id) {
-      return;
-    }
-
-    const controller = new AbortController();
-
-    const syncGatewayBalance = async () => {
-      setGatewayLoading(true);
-      setGatewayError(null);
-
-      try {
-        const balance = await readGatewayBalance(store.id);
-        if (controller.signal.aborted) {
-          return;
-        }
-        setDigitalOpeningBalance(balance);
-        setGatewayBalanceSyncedAt(new Date().toISOString());
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
-        }
-        setGatewayError(error instanceof Error ? error.message : 'Gagal mengambil saldo Xendit');
-      } finally {
-        if (!controller.signal.aborted) {
-          setGatewayLoading(false);
-        }
-      }
-    };
-
-    void syncGatewayBalance();
-
-    return () => controller.abort();
-  }, [currentSession, store.id]);
-
-  const refreshGatewayBalance = async () => {
-    if (!store.id) {
-      messageApi.error('Store belum siap');
-      return;
+      throw new Error('Store belum siap');
     }
 
     setGatewayLoading(true);
@@ -154,16 +133,78 @@ export default function ShiftsPage() {
 
     try {
       const balance = await readGatewayBalance(store.id);
-      setDigitalOpeningBalance(balance);
+      if (mode === 'closing') {
+        setDigitalClosingBalance(balance);
+      } else {
+        setDigitalOpeningBalance(balance);
+      }
       setGatewayBalanceSyncedAt(new Date().toISOString());
-      messageApi.success('Saldo Xendit berhasil disinkronkan');
+      if (showToast) {
+        messageApi.success('Saldo Xendit berhasil disinkronkan');
+      }
+      return balance;
     } catch (error) {
-      setGatewayError(error instanceof Error ? error.message : 'Gagal mengambil saldo Xendit');
-      messageApi.error(error instanceof Error ? error.message : 'Gagal mengambil saldo Xendit');
+      const message = error instanceof Error ? error.message : 'Gagal mengambil saldo Xendit';
+      setGatewayError(message);
+      if (showToast) {
+        messageApi.error(message);
+      }
+      throw error;
     } finally {
       setGatewayLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!store.id) {
+      return;
+    }
+
+    let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const run = async () => {
+      try {
+        const balance = await readGatewayBalance(store.id);
+        if (cancelled) {
+          return;
+        }
+
+        setGatewayError(null);
+        if (currentSession) {
+          setDigitalClosingBalance(balance);
+        } else {
+          setDigitalOpeningBalance(balance);
+        }
+        setGatewayBalanceSyncedAt(new Date().toISOString());
+      } catch (error) {
+        if (!cancelled) {
+          setGatewayError(error instanceof Error ? error.message : 'Gagal mengambil saldo Xendit');
+        }
+      } finally {
+        if (!cancelled) {
+          setGatewayLoading(false);
+        }
+      }
+    };
+
+    setGatewayLoading(true);
+    void run();
+
+    if (currentSession) {
+      intervalId = setInterval(() => {
+        setGatewayLoading(true);
+        void run();
+      }, 30000);
+    }
+
+    return () => {
+      cancelled = true;
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [currentSession, store.id]);
 
   const handleOpen = async () => {
     if (!user || !selectedShift) {
@@ -178,7 +219,8 @@ export default function ShiftsPage() {
     setOpeningLoading(true);
 
     try {
-      const result = await openShift(selectedShift, user.id, openingBalance, digitalOpeningBalance);
+      const latestGatewayBalance = await syncGatewayBalance('opening');
+      const result = await openShift(selectedShift, user.id, openingBalance, latestGatewayBalance);
       if (!result) {
         messageApi.error('Shift aktif sudah ada');
         return;
@@ -200,7 +242,8 @@ export default function ShiftsPage() {
     setClosingLoading(true);
 
     try {
-      await closeShift(currentSession.id, closingBalance, digitalClosingBalance, notes);
+      const latestGatewayBalance = await syncGatewayBalance('closing');
+      await closeShift(currentSession.id, closingBalance, latestGatewayBalance, notes);
       messageApi.success('Shift berhasil ditutup');
       setClosingBalance(0);
       setDigitalClosingBalance(0);
@@ -287,6 +330,8 @@ export default function ShiftsPage() {
 
   const currentSessionExpectedDigital =
     Number(currentSession?.xenditBalanceOpen || 0) + Number(currentSession?.xenditTotalIn || 0);
+  const currentCashDiscrepancy = closingBalance - currentSessionExpectedCash;
+  const currentDigitalDiscrepancy = digitalClosingBalance - currentSessionExpectedDigital;
 
   const operasionalContent = (
     <div className="mt-4 space-y-6">
@@ -331,20 +376,16 @@ export default function ShiftsPage() {
                   <CreditCardOutlined /> Saldo Awal Xendit
                 </Text>
                 <div className="flex gap-2">
-                  <InputNumber
-                    className="h-12 w-full"
-                    style={{ width: '100%' }}
-                    min={0}
-                    value={digitalOpeningBalance}
-                    onChange={(value) => setDigitalOpeningBalance(Number(value || 0))}
-                    formatter={(value) => `Rp ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
-                    parser={(value) => Number(value?.replace(/[^\d]/g, '') || 0)}
+                  <Input
+                    className="h-12"
+                    readOnly
+                    value={formatCurrency(digitalOpeningBalance)}
                     status={gatewayError ? 'warning' : undefined}
                     disabled={openingLoading || isShiftSessionMutating}
                   />
                   <Button
                     icon={<ReloadOutlined />}
-                    onClick={() => void refreshGatewayBalance()}
+                    onClick={() => void syncGatewayBalance('opening', true)}
                     loading={gatewayLoading}
                     className="h-12"
                     disabled={openingLoading || isShiftSessionMutating}
@@ -356,7 +397,7 @@ export default function ShiftsPage() {
                   {gatewayError
                     ? `Gateway: ${gatewayError}`
                     : gatewayBalanceSyncedAt
-                      ? 'Saldo diambil dari payment gateway'
+                      ? `Otomatis dari Xendit • ${formatDateTime(gatewayBalanceSyncedAt)}`
                       : 'Menunggu sinkronisasi saldo'}
                 </Text>
               </Col>
@@ -435,6 +476,19 @@ export default function ShiftsPage() {
                         parser={(value) => Number(value?.replace(/[^\d]/g, '') || 0)}
                         disabled={closingLoading || isShiftSessionMutating}
                       />
+                      <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-[#303030] dark:bg-[#101010]">
+                        <div>
+                          <Text type="secondary" className="block text-xs">
+                            Selisih Tunai
+                          </Text>
+                          <Text strong className={`text-base ${getDiscrepancyTone(currentCashDiscrepancy)}`}>
+                            {formatCurrency(currentCashDiscrepancy)}
+                          </Text>
+                        </div>
+                        <Tag color={getDiscrepancyTagColor(currentCashDiscrepancy)} className="m-0 rounded-full px-3 font-bold">
+                          {getDiscrepancyLabel(currentCashDiscrepancy)}
+                        </Tag>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -468,18 +522,47 @@ export default function ShiftsPage() {
                       </Text>
                     </div>
                     <div className="mt-4">
-                      <Text strong className="mb-1 block text-xs uppercase text-slate-500">
-                        Saldo Aktual di Xendit
-                      </Text>
-                      <InputNumber
-                        className="h-12 w-full text-lg font-black"
-                        style={{ width: '100%' }}
-                        value={digitalClosingBalance}
-                        onChange={(value) => setDigitalClosingBalance(Number(value || 0))}
-                        formatter={(value) => `Rp ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, '.')}
-                        parser={(value) => Number(value?.replace(/[^\d]/g, '') || 0)}
+                      <div className="mb-1 flex items-center justify-between gap-3">
+                        <Text strong className="block text-xs uppercase text-slate-500">
+                          Saldo Aktual di Xendit
+                        </Text>
+                        <Button
+                          icon={<ReloadOutlined />}
+                          onClick={() => void syncGatewayBalance('closing', true)}
+                          loading={gatewayLoading}
+                          size="small"
+                          disabled={closingLoading || isShiftSessionMutating}
+                        >
+                          Sync
+                        </Button>
+                      </div>
+                      <Input
+                        className="h-12 text-lg font-black"
+                        readOnly
+                        value={formatCurrency(digitalClosingBalance)}
+                        status={gatewayError ? 'warning' : undefined}
                         disabled={closingLoading || isShiftSessionMutating}
                       />
+                      <Text type="secondary" className="mt-1 block text-xs">
+                        {gatewayError
+                          ? `Gateway: ${gatewayError}`
+                          : gatewayBalanceSyncedAt
+                            ? `Otomatis dari Xendit • ${formatDateTime(gatewayBalanceSyncedAt)}`
+                            : 'Menunggu sinkronisasi saldo'}
+                      </Text>
+                      <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-[#303030] dark:bg-[#101010]">
+                        <div>
+                          <Text type="secondary" className="block text-xs">
+                            Selisih Digital
+                          </Text>
+                          <Text strong className={`text-base ${getDiscrepancyTone(currentDigitalDiscrepancy)}`}>
+                            {formatCurrency(currentDigitalDiscrepancy)}
+                          </Text>
+                        </div>
+                        <Tag color={getDiscrepancyTagColor(currentDigitalDiscrepancy)} className="m-0 rounded-full px-3 font-bold">
+                          {getDiscrepancyLabel(currentDigitalDiscrepancy)}
+                        </Tag>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -553,13 +636,13 @@ export default function ShiftsPage() {
                   </div>
                   <div className="flex justify-between text-xs">
                     <Text type="secondary">Selisih Tunai</Text>
-                    <Text strong className={Number(session.cashDiscrepancy) < 0 ? 'text-red-500' : 'text-emerald-500'}>
+                    <Text strong className={getDiscrepancyTone(Number(session.cashDiscrepancy || 0))}>
                       {formatCurrency(session.cashDiscrepancy || 0)}
                     </Text>
                   </div>
                   <div className="flex justify-between text-xs">
                     <Text type="secondary">Selisih Xendit</Text>
-                    <Text strong className={Number(session.xenditDiscrepancy) < 0 ? 'text-red-500' : 'text-blue-500'}>
+                    <Text strong className={getDiscrepancyTone(Number(session.xenditDiscrepancy || 0))}>
                       {formatCurrency(session.xenditDiscrepancy || 0)}
                     </Text>
                   </div>
