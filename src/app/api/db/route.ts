@@ -33,7 +33,13 @@ const OWNER_MANAGER_ONLY_TABLES = new Set([
   'tables',
 ]);
 
-const BLOCKED_WRITE_TABLES = new Set(['orders', 'tables']);
+const BLOCKED_WRITE_TABLES = new Set([
+  'orders',
+  'tables',
+  'expenses',
+  'shift_sessions',
+  'transactions',
+]);
 const CATEGORY_SELECT = {
   id: true,
   name: true,

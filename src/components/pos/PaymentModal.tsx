@@ -98,7 +98,6 @@ export function PaymentModal({
 }: PaymentModalProps) {
   const {
     items,
-    total: getTotal,
     discount,
     customerName,
     clear: clearCart,
@@ -109,6 +108,7 @@ export function PaymentModal({
   const { app } = useSettingsStore();
   const currentUser = useCurrentUser();
   const store = useDataStore((state) => state.store);
+  const subtotalAmount = useCartStore((s) => s.subtotal);
   const bootstrap = useDataStore((state) => state.bootstrap);
 
   const [step, setStep] = useState<'payment' | 'processing' | 'xendit_pending' | 'success'>('payment');
@@ -129,7 +129,12 @@ export function PaymentModal({
   const taxRate = Number(store.taxPercentage) || 0;
   const serviceChargeRate = Number(store.serviceChargePercentage) || 0;
 
-  const totalAmount = useMemo(() => getTotal(taxRate, serviceChargeRate), [getTotal, taxRate, serviceChargeRate]);
+  const totalAmount = useMemo(() => {
+    const taxable = Math.max(0, subtotalAmount - discount);
+    const sc = taxable * (serviceChargeRate / 100);
+    const tx = (taxable + sc) * (taxRate / 100);
+    return Math.round(taxable + sc + tx);
+  }, [subtotalAmount, discount, taxRate, serviceChargeRate]);
   const quickAmounts = [50000, 100000, 200000, 500000];
 
   const changeAmount = useMemo(() => {
@@ -342,6 +347,7 @@ export function PaymentModal({
           discountAmount: discount,
           paymentMethod,
           amountPaid: paid,
+          clientTotalAmount: totalAmount,
           shiftSessionId: currentSession.id,
           cashierId: userId,
           customerName: customerName || undefined,

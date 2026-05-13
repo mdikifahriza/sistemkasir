@@ -247,8 +247,16 @@ export async function POST(req: NextRequest) {
         const taxRate = Number(store.taxPercentage ?? 0);
         const serviceCharge = taxable * (serviceChargeRate / 100);
         const taxAmount = (taxable + serviceCharge) * (taxRate / 100);
-        const totalAmount = taxable + serviceCharge + taxAmount;
+        const totalAmount = Math.round(taxable + serviceCharge + taxAmount);
         const paidAmount = paymentMethod === 'cash' ? Math.max(toSafeNumber(body.amountPaid), 0) : totalAmount;
+
+        // Cross-check: jika client mengirim total, pastikan tidak beda jauh
+        const clientTotal = toSafeNumber((body as any).clientTotalAmount);
+        if (clientTotal > 0 && Math.abs(clientTotal - totalAmount) > 2) {
+          throw new Error(
+            `Total tidak sinkron: client=${clientTotal}, server=${totalAmount}. Refresh halaman dan coba lagi.`
+          );
+        }
 
         if (paymentMethod === 'cash' && paidAmount < totalAmount) {
           throw new Error('Jumlah pembayaran tunai kurang dari total transaksi');

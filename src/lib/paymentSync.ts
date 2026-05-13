@@ -104,6 +104,11 @@ export async function syncPaymentStateFromGateway(
   }
 
   return prisma.$transaction(async (tx) => {
+    // Row-level lock untuk mencegah race condition concurrent webhook
+    if (resolvedTransactionId) {
+      await tx.$executeRaw`SELECT 1 FROM "Transaction" WHERE id = ${resolvedTransactionId} FOR UPDATE`;
+    }
+
     const order = directOrderId
       ? await tx.order.findUnique({
           where: { id: directOrderId },
@@ -172,8 +177,30 @@ export async function syncPaymentStateFromGateway(
       }
 
       if (Object.keys(orderUpdate).length > 0) {
-        await tx.order.update({ where: { id: order.id }, data: orderUpdate });
+        const updatedOrder = await tx.order.update({
+          where: { id: order.id },
+          data: orderUpdate,
+          select: { id: true, tableId: true, status: true },
+        });
         orderStatusChanged = true;
+
+        // FIX C1: Release Table jika order dibatalkan (misal: payment expired)
+        if (updatedOrder.status === 'cancelled' && updatedOrder.tableId) {
+          const otherActiveOrdersCount = await tx.order.count({
+            where: {
+              tableId: updatedOrder.tableId,
+              id: { not: updatedOrder.id },
+              status: { in: ['pending_payment', 'paid', 'processing', 'ready'] },
+            },
+          });
+
+          if (otherActiveOrdersCount === 0) {
+            await tx.table.update({
+              where: { id: updatedOrder.tableId },
+              data: { status: 'available' },
+            });
+          }
+        }
       }
     }
 
@@ -185,15 +212,27 @@ export async function syncPaymentStateFromGateway(
           
           // Update Shift Session if this is the first time it becomes completed
           if (transaction.shiftSessionId) {
-             await tx.shiftSession.update({
-               where: { id: transaction.shiftSessionId },
-               data: {
-                 totalDigitalSales: { increment: amount },
-                 totalTransactions: { increment: 1 },
-                 xenditTotalIn: { increment: amount },
-                 xenditTransactionCount: { increment: 1 }
-               }
-             });
+            // FIX C3: Hanya update total jika shift masih open
+            const session = await tx.shiftSession.findUnique({
+              where: { id: transaction.shiftSessionId },
+              select: { status: true },
+            });
+
+            if (session?.status === 'open') {
+              await tx.shiftSession.update({
+                where: { id: transaction.shiftSessionId },
+                data: {
+                  totalDigitalSales: { increment: amount },
+                  totalTransactions: { increment: 1 },
+                  xenditTotalIn: { increment: amount },
+                  xenditTransactionCount: { increment: 1 },
+                },
+              });
+            } else {
+              console.warn(
+                `[paymentSync] Skipped shift totals update for ${session?.status || 'unknown'} session: ${transaction.shiftSessionId}`
+              );
+            }
           }
         }
         if (Number(transaction.amountPaid) !== amount) transactionUpdate.amountPaid = amount;
