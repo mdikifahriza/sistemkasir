@@ -250,36 +250,41 @@ export function PaymentModal({
         }
 
         const latestTransaction = result.data.transaction;
+      const latestPaymentStatus = result.data.payment?.status ?? null;
 
-        if (result.data.payment?.paymentUrl) {
-          setPaymentUrl(result.data.payment.paymentUrl);
-        }
+      if (result.data.payment?.paymentUrl) {
+        setPaymentUrl(result.data.payment.paymentUrl);
+      }
 
-        setCompletedTransaction((current) =>
-          current ? { ...current, ...latestTransaction } : latestTransaction
+      setCompletedTransaction((current) =>
+        current ? { ...current, ...latestTransaction } : latestTransaction
+      );
+
+      const normalizedGatewayStatus = latestPaymentStatus?.toLowerCase() ?? null;
+      const isGatewayPaid = normalizedGatewayStatus === 'paid' || normalizedGatewayStatus === 'completed' || normalizedGatewayStatus === 'succeeded';
+      const isGatewayFailed = ['failed', 'void', 'expired', 'refunded', 'cancelled', 'canceled'].includes(normalizedGatewayStatus ?? '');
+
+      if (latestTransaction.status === 'completed' || isGatewayPaid) {
+        setWaitingXenditPayment(false);
+        await refreshSnapshot();
+        setStep('success');
+        setShowPrintPrompt(true);
+        setError(null);
+        return true;
+      }
+
+      if (isGatewayFailed || ['failed', 'void', 'expired', 'refunded'].includes(latestTransaction.status)) {
+        setWaitingXenditPayment(false);
+        setPaymentUrl(null);
+        setError(
+          normalizedGatewayStatus === 'expired' || latestTransaction.status === 'expired'
+            ? 'Pembayaran kedaluwarsa. Buat link pembayaran baru untuk mencoba lagi.'
+            : normalizedGatewayStatus === 'refunded' || latestTransaction.status === 'refunded'
+              ? 'Pembayaran direfund. Buat transaksi baru bila diperlukan.'
+              : 'Pembayaran gagal atau dibatalkan. Buat link pembayaran baru untuk mencoba lagi.'
         );
-
-        if (latestTransaction.status === 'completed') {
-          setWaitingXenditPayment(false);
-          await refreshSnapshot();
-          setStep('success');
-          setShowPrintPrompt(true);
-          setError(null);
-          return true;
-        }
-
-        if (['failed', 'void', 'expired', 'refunded'].includes(latestTransaction.status)) {
-          setWaitingXenditPayment(false);
-          setPaymentUrl(null);
-          setError(
-            latestTransaction.status === 'expired'
-              ? 'Pembayaran kedaluwarsa. Buat link pembayaran baru untuk mencoba lagi.'
-              : latestTransaction.status === 'refunded'
-                ? 'Pembayaran direfund. Buat transaksi baru bila diperlukan.'
-                : 'Pembayaran gagal atau dibatalkan. Buat link pembayaran baru untuk mencoba lagi.'
-          );
-          return true;
-        }
+        return true;
+      }
       } catch (pollError) {
         console.error('Polling error:', pollError);
       } finally {

@@ -156,27 +156,91 @@ export default function TablesPage() {
 
   const downloadQR = (tableId: string, tableName: string) => {
     const svg = document.getElementById(`qr-${tableId}`);
-    if (svg) {
-      const svgData = new XMLSerializer().serializeToString(svg);
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-      const img = new Image();
-      img.onload = () => {
-        canvas.width = 1000;
-        canvas.height = 1000;
-        if (ctx) {
-          ctx.fillStyle = "white";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0, 1000, 1000);
-          const pngFile = canvas.toDataURL("image/png");
-          const downloadLink = document.createElement("a");
-          downloadLink.download = `QR_Meja_${tableName}.png`;
-          downloadLink.href = pngFile;
-          downloadLink.click();
-        }
-      };
-      img.src = "data:image/svg+xml;base64," + btoa(svgData);
+    if (!svg) {
+      return;
     }
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+
+    img.onload = () => {
+      const qrSize = 900;
+      const textAreaHeight = 140;
+      const canvasWidth = qrSize;
+      const canvasHeight = qrSize + textAreaHeight;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+      ctx.drawImage(img, 0, 0, qrSize, qrSize);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 42px Inter, Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      const textX = canvasWidth / 2;
+      const textY = qrSize + 30;
+      const maxTextWidth = canvasWidth - 40;
+
+      const lines = [tableName].flatMap((text) => {
+        if (!ctx.measureText(text).width || ctx.measureText(text).width <= maxTextWidth) {
+          return [text];
+        }
+
+        const words = text.split(' ');
+        const wrappedLines: string[] = [];
+        let currentLine = '';
+
+        for (const word of words) {
+          const candidate = currentLine ? `${currentLine} ${word}` : word;
+          if (ctx.measureText(candidate).width <= maxTextWidth) {
+            currentLine = candidate;
+          } else {
+            if (currentLine) wrappedLines.push(currentLine);
+            currentLine = word;
+          }
+        }
+
+        if (currentLine) wrappedLines.push(currentLine);
+        return wrappedLines;
+      });
+
+      lines.forEach((line, index) => {
+        ctx.fillText(line, textX, textY + index * 48);
+      });
+
+      canvas.toBlob((blobResult) => {
+        if (!blobResult) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+
+        const downloadLink = document.createElement('a');
+        downloadLink.href = URL.createObjectURL(blobResult);
+        downloadLink.download = `QR_Meja_${tableName.replace(/[^a-zA-Z0-9-_ ]/g, '')}.png`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(downloadLink.href);
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+    };
+
+    img.src = url;
   };
 
   return (
@@ -265,7 +329,7 @@ export default function TablesPage() {
                   <QRCodeSVG 
                     id={`qr-${table.id}`}
                     value={table.qrCodeUrl || ''} 
-                    size={0}
+                    size={256}
                     style={{ width: '100%', height: 'auto', maxWidth: '160px' }}
                     level="H"
                     includeMargin={true}
